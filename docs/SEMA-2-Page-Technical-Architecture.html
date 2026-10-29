@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SEMA — 2-Page Technical Architecture Documentation</title>
+  <meta name="description" content="Technical architecture documentation, key assumptions, technology choices, and end-to-end architecture flow diagram for Safaricom SEMA." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --saf-green: #00703c;
+      --saf-dark-green: #004d2a;
+      --saf-light-green: #e6f4ea;
+      --saf-red: #e11d48;
+      --saf-amber: #d97706;
+      --slate-900: #0f172a;
+      --slate-800: #1e293b;
+      --slate-700: #334155;
+      --slate-600: #475569;
+      --slate-100: #f1f5f9;
+      --slate-50: #f8fafc;
+      --border-color: #cbd5e1;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #e2e8f0;
+      color: var(--slate-900);
+      line-height: 1.45;
+      font-size: 11pt;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(8px);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      color: white;
+    }
+
+    .toolbar-title {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .toolbar-title .badge {
+      background: var(--saf-green);
+      color: white;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s ease;
+      border: 1px solid transparent;
+    }
+
+    .btn-primary {
+      background: var(--saf-green);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #008f4c;
+    }
+
+    .btn-secondary {
+      background: #334155;
+      color: white;
+      border-color: #475569;
+    }
+
+    .btn-secondary:hover {
+      background: #475569;
+    }
+
+    .document-container {
+      max-width: 900px;
+      margin: 28px auto 40px auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .page {
+      background: #ffffff;
+      padding: 32px 36px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+      position: relative;
+      min-height: 1130px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      page-break-after: always;
+      break-after: page;
+    }
+
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid var(--saf-green);
+      padding-bottom: 14px;
+      margin-bottom: 16px;
+    }
+
+    .brand-group {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .super-title {
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--saf-green);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .doc-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--slate-900);
+      letter-spacing: -0.02em;
+    }
+
+    .doc-subtitle {
+      font-size: 11.5px;
+      color: var(--slate-600);
+      font-weight: 500;
+    }
+
+    .meta-box {
+      text-align: right;
+      font-size: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--slate-600);
+      line-height: 1.4;
+      background: var(--slate-50);
+      border: 1px solid var(--border-color);
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+
+    .page-footer {
+      border-top: 1px solid var(--border-color);
+      padding-top: 10px;
+      margin-top: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 9.5px;
+      color: var(--slate-600);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--slate-900);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+      margin-bottom: 8px;
+      border-left: 3px solid var(--saf-green);
+      padding-left: 8px;
+    }
+
+    p, li {
+      font-size: 10pt;
+      color: var(--slate-700);
+      line-height: 1.45;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .card {
+      background: var(--slate-50);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .card-title {
+      font-size: 10.5pt;
+      font-weight: 700;
+      color: var(--slate-900);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .card-body {
+      font-size: 9.5pt;
+      color: var(--slate-600);
+    }
+
+    .diagram-container {
+      background: #0f172a;
+      border-radius: 10px;
+      padding: 12px;
+      margin: 10px 0 14px 0;
+      border: 1px solid #1e293b;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+    }
+
+    .diagram-caption {
+      text-align: center;
+      font-size: 9px;
+      font-family: 'JetBrains Mono', monospace;
+      color: #94a3b8;
+      margin-top: 6px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9.5pt;
+      margin: 8px 0 12px 0;
+    }
+
+    th, td {
+      border: 1px solid var(--border-color);
+      padding: 6px 10px;
+      text-align: left;
+    }
+
+    th {
+      background: #f1f5f9;
+      font-weight: 700;
+      color: var(--slate-900);
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    td strong {
+      color: var(--slate-900);
+    }
+
+    .tag {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 8.5px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--saf-light-green);
+      color: var(--saf-dark-green);
+      border: 1px solid #bbf7d0;
+    }
+
+    .tag-amber {
+      background: #fef3c7;
+      color: #92400e;
+      border-color: #fde68a;
+    }
+
+    .tag-red {
+      background: #ffe4e6;
+      color: #9f1239;
+      border-color: #fecdd3;
+    }
+
+    @media print {
+      body {
+        background: transparent;
+      }
+      .toolbar {
+        display: none !important;
+      }
+      .document-container {
+        margin: 0;
+        max-width: 100%;
+        gap: 0;
+      }
+      .page {
+        box-shadow: none;
+        border-radius: 0;
+        margin: 0;
+        padding: 12mm 14mm;
+        width: 100%;
+        min-height: 297mm;
+        height: auto;
+        page-break-after: always;
+        break-after: page;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Download & Action Header -->
+  <div class="toolbar">
+    <div class="toolbar-title">
+      <span>SEMA System Architecture · 2-Page Executive Blueprint</span>
+      <span class="badge">A4 2-PAGE SPEC</span>
+    </div>
+    <div class="toolbar-actions">
+      <button class="btn btn-secondary" onclick="window.print()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+        Print / Save to PDF
+      </button>
+      <a class="btn btn-primary" href="/SEMA-2-Page-Technical-Architecture.html" download="Safaricom-SEMA-2-Page-Technical-Architecture.html">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        Download HTML Document
+      </a>
+    </div>
+  </div>
+
+  <div class="document-container">
+
+    <!-- ==================== PAGE 1 ==================== -->
+    <div class="page" id="page-1">
+      <div>
+        <div class="page-header">
+          <div class="brand-group">
+            <span class="super-title">Safaricom PLC · Technology &amp; Network Operations Division</span>
+            <h1 class="doc-title">SEMA Incident Intelligence Architecture</h1>
+            <p class="doc-subtitle">Autonomous Multilingual Voice, Vision &amp; Cross-Channel Outage Correlation Platform</p>
+          </div>
+          <div class="meta-box">
+            <div>DOC ID: SAF-SEMA-ARCH-v2.2</div>
+            <div>RUNTIME: Node.js 22 · React 19</div>
+            <div>CLASSIFICATION: Engineering Standard</div>
+            <div>PAGE 1 OF 2</div>
+          </div>
+        </div>
+
+        <!-- Section 1: Executive Summary & Assumptions -->
+        <div class="section-title">1. System Context &amp; Foundational Assumptions</div>
+        <p style="margin-bottom: 8px;">
+          <strong>SEMA</strong> (Sema Safaricom) is an omni-channel customer intelligence and rapid incident dispatch platform architected to eliminate telecommunication response latency across Kenya. Operating in high-density metropolitan and rural corridors, SEMA bridges citizen problem statements across voice recordings, photographic evidence, and CRM feeds into verified NOC directives.
+        </p>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">
+              <span class="tag">ASSUMPTION 01</span>
+              <span>Kenyan Multilingual Continuum</span>
+            </div>
+            <div class="card-body">
+              Subscribers code-switch fluidly between <strong>English, Kiswahili, and Sheng</strong>. The system must never reject colloquial dialect (e.g., <em>"manze router inawaka red"</em>, <em>"chapaa imekwama kwa paybill"</em>) and must generate parallel normalized English translations for field engineers without losing citizen intent.
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">
+              <span class="tag">ASSUMPTION 02</span>
+              <span>Client-Side Multimodal Edge</span>
+            </div>
+            <div class="card-body">
+              Mobile subscribers capture high-resolution camera images (8–12 MB) of optical network terminals (ONT), error dialogues, or app stalls. Browser edge processing compresses files to <strong>~1 MB via HTML5 Canvas rasterization</strong> before single-request transit, ensuring zero mobile bandwidth waste.
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">
+              <span class="tag tag-amber">ASSUMPTION 03</span>
+              <span>Zero-Trust Privacy &amp; Fraud Safety</span>
+            </div>
+            <div class="card-body">
+              Customer reports and uploaded screenshots must <strong>never retain or request M-PESA PINs, full National ID numbers, or OTP credentials</strong>. All SIM swap or fraud indicators immediately trigger emergency freezes routed exclusively to the Cyber-Fraud Unit.
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">
+              <span class="tag tag-red">ASSUMPTION 04</span>
+              <span>Cascading Failure Correlation</span>
+            </div>
+            <div class="card-body">
+              Fiber backhaul outages in a ward inevitably trigger secondary spikes in M-PESA merchant settlement timeouts and mobile cell overload. Spatial-temporal clustering correlates divergent categories as <em>"Possibly related (same area and time)"</em>.
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: End-to-End Architecture Flow Diagram -->
+        <div class="section-title">2. End-to-End System Architecture Flow</div>
+        
+        <div class="diagram-container">
+          <svg viewBox="0 0 820 280" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="grad-blue" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#1e293b"/>
+                <stop offset="100%" stop-color="#0f172a"/>
+              </linearGradient>
+              <linearGradient id="grad-green" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#00703c"/>
+                <stop offset="100%" stop-color="#004d2a"/>
+              </linearGradient>
+              <linearGradient id="grad-amber" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#d97706"/>
+                <stop offset="100%" stop-color="#92400e"/>
+              </linearGradient>
+              <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+                <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+              </filter>
+            </defs>
+
+            <!-- Box 1: Multi-Channel Inflow -->
+            <rect x="15" y="25" width="165" height="230" rx="8" fill="url(#grad-blue)" stroke="#334155" stroke-width="1.5" filter="url(#shadow)"/>
+            <text x="97" y="45" fill="#38bdf8" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="700" text-anchor="middle">1. MULTI-CHANNEL INFLOW</text>
+            <rect x="25" y="55" width="145" height="34" rx="5" fill="#1e293b" stroke="#475569"/>
+            <text x="35" y="72" fill="#ffffff" font-family="sans-serif" font-size="9.5" font-weight="600">Web Portal (Voice/Mic)</text>
+            <text x="35" y="83" fill="#94a3b8" font-family="sans-serif" font-size="8">Sheng / Swahili Audio Stream</text>
+            <rect x="25" y="96" width="145" height="34" rx="5" fill="#1e293b" stroke="#475569"/>
+            <text x="35" y="113" fill="#ffffff" font-family="sans-serif" font-size="9.5" font-weight="600">Photo / Screenshot (x3)</text>
+            <text x="35" y="124" fill="#10b981" font-family="'JetBrains Mono', monospace" font-size="7.5">Browser Canvas ~1MB JPG</text>
+            <rect x="25" y="137" width="145" height="34" rx="5" fill="#1e293b" stroke="#475569"/>
+            <text x="35" y="154" fill="#ffffff" font-family="sans-serif" font-size="9.5" font-weight="600">Enterprise CRM / Voice</text>
+            <text x="35" y="165" fill="#94a3b8" font-family="sans-serif" font-size="8">Call Center Inflow Logs</text>
+            <rect x="25" y="178" width="145" height="34" rx="5" fill="#1e293b" stroke="#475569"/>
+            <text x="35" y="195" fill="#ffffff" font-family="sans-serif" font-size="9.5" font-weight="600">Social / WhatsApp Feed</text>
+            <text x="35" y="206" fill="#94a3b8" font-family="sans-serif" font-size="8">Twitter (X), Zuri &amp; USSD</text>
+            <rect x="25" y="219" width="145" height="24" rx="4" fill="#334155"/>
+            <text x="97" y="235" fill="#e2e8f0" font-family="sans-serif" font-size="8" text-anchor="middle">Location &amp; GPS Anchor</text>
+
+            <!-- Connector 1 -> 2 -->
+            <path d="M 180 140 L 210 140" stroke="#00703c" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+
+            <!-- Box 2: Node.js Backend Gateway -->
+            <rect x="215" y="25" width="170" height="230" rx="8" fill="url(#grad-blue)" stroke="#334155" stroke-width="1.5" filter="url(#shadow)"/>
+            <text x="300" y="45" fill="#34d399" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="700" text-anchor="middle">2. EXPRESS API PROXY</text>
+            <rect x="225" y="55" width="150" height="42" rx="5" fill="#1e293b" stroke="#475569"/>
+            <text x="235" y="72" fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="600">POST /api/analyze-images</text>
+            <text x="235" y="85" fill="#94a3b8" font-family="sans-serif" font-size="8">Batch Multimodal Gemini Payload</text>
+            <rect x="225" y="104" width="150" height="42" rx="5" fill="#1e293b" stroke="#475569"/>
+            <text x="235" y="121" fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="600">POST /api/submissions</text>
+            <text x="235" y="134" fill="#94a3b8" font-family="sans-serif" font-size="8">Atomic Triage &amp; SLA Provisioning</text>
+            <rect x="225" y="153" width="150" height="42" rx="5" fill="#1e293b" stroke="#475569"/>
+            <text x="235" y="170" fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="600">POST /api/transcribe</text>
+            <text x="235" y="183" fill="#94a3b8" font-family="sans-serif" font-size="8">Gemini Speech Transcription</text>
+            <rect x="225" y="202" width="150" height="42" rx="5" fill="#1e293b" stroke="#475569"/>
+            <text x="235" y="219" fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="600">Vite Middlewares &amp; SPA</text>
+            <text x="235" y="232" fill="#94a3b8" font-family="sans-serif" font-size="8">Port 3000 Unified Host</text>
+
+            <!-- Connector 2 -> 3 -->
+            <path d="M 385 140 L 415 140" stroke="#00703c" stroke-width="2.5" fill="none"/>
+
+            <!-- Box 3: Google GenAI Intelligence -->
+            <rect x="420" y="25" width="180" height="230" rx="8" fill="url(#grad-green)" stroke="#10b981" stroke-width="1.5" filter="url(#shadow)"/>
+            <text x="510" y="45" fill="#ffffff" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="700" text-anchor="middle">3. GEMINI 3.8 AI ENGINE</text>
+            <rect x="430" y="55" width="160" height="40" rx="5" fill="#004d2a" stroke="#059669"/>
+            <text x="440" y="71" fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="600">Vision OCR &amp; Diagnosis</text>
+            <text x="440" y="84" fill="#a7f3d0" font-family="sans-serif" font-size="8">Screenshots → Structured Draft</text>
+            <rect x="430" y="102" width="160" height="40" rx="5" fill="#004d2a" stroke="#059669"/>
+            <text x="440" y="118" fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="600">Trilingual Translation</text>
+            <text x="440" y="131" fill="#a7f3d0" font-family="sans-serif" font-size="8">Sheng/Swahili → Executive English</text>
+            <rect x="430" y="149" width="160" height="40" rx="5" fill="#004d2a" stroke="#059669"/>
+            <text x="440" y="165" fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="600">Frustration &amp; Tension Scoring</text>
+            <text x="440" y="178" fill="#a7f3d0" font-family="sans-serif" font-size="8">Civic Agitation &amp; Danger Alerts</text>
+            <rect x="430" y="196" width="160" height="46" rx="5" fill="#004d2a" stroke="#059669"/>
+            <text x="440" y="212" fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="600">Category &amp; Team Routing</text>
+            <text x="440" y="225" fill="#a7f3d0" font-family="sans-serif" font-size="8">7 Specialised Safaricom Units</text>
+            <text x="440" y="235" fill="#fcd34d" font-family="'JetBrains Mono', monospace" font-size="7">Zero PIN/ID Output Guardrail</text>
+
+            <!-- Connector 3 -> 4 -->
+            <path d="M 600 140 L 630 140" stroke="#00703c" stroke-width="2.5" fill="none"/>
+
+            <!-- Box 4: Dispatch & Root Cause Engine -->
+            <rect x="635" y="25" width="170" height="230" rx="8" fill="url(#grad-amber)" stroke="#f59e0b" stroke-width="1.5" filter="url(#shadow)"/>
+            <text x="720" y="45" fill="#ffffff" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="700" text-anchor="middle">4. NOC DISPATCH &amp; CLUSTERS</text>
+            <rect x="645" y="55" width="150" height="40" rx="5" fill="#78350f" stroke="#b45309"/>
+            <text x="655" y="71" fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="600">Spatial-Temporal Clusters</text>
+            <text x="655" y="84" fill="#fef3c7" font-family="sans-serif" font-size="8">60m Window / Geo-correlation</text>
+            <rect x="645" y="102" width="150" height="40" rx="5" fill="#78350f" stroke="#b45309"/>
+            <text x="655" y="118" fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="600">AI Hypothesis Engine</text>
+            <text x="655" y="131" fill="#fef3c7" font-family="sans-serif" font-size="8">Fibre 8 · M-PESA 5 Breakdown</text>
+            <rect x="645" y="149" width="150" height="40" rx="5" fill="#78350f" stroke="#b45309"/>
+            <text x="655" y="165" fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="600">Automated Email Alerting</text>
+            <text x="655" y="178" fill="#fef3c7" font-family="sans-serif" font-size="8">Engineer Memo + Screenshots</text>
+            <rect x="645" y="196" width="150" height="46" rx="5" fill="#78350f" stroke="#b45309"/>
+            <text x="655" y="212" fill="#ffffff" font-family="sans-serif" font-size="9" font-weight="600">SLA Enforcement Clock</text>
+            <text x="655" y="225" fill="#fef3c7" font-family="sans-serif" font-size="8">30m · 2h · 4h · 24h Turnaround</text>
+            <text x="655" y="235" fill="#ffffff" font-family="'JetBrains Mono', monospace" font-size="7">Auto-Dispatch Active</text>
+          </svg>
+          <div class="diagram-caption">FIGURE 1: SEMA End-to-End Multimodal Event Processing &amp; Autonomous Triage Pipeline</div>
+        </div>
+
+        <p style="font-size: 9.5pt; color: var(--slate-600);">
+          <strong>Pipeline Invariant:</strong> Raw voice audio and uploaded screenshots undergo strict non-destructive client compression before transit. Gemini outputs are formatted as strict JSON schemas and hydrated directly into the central ticket registry.
+        </p>
+      </div>
+
+      <div class="page-footer">
+        <span>SAFARICOM SEMA PLATFORM ARCHITECTURE SPECIFICATION</span>
+        <span>CONTINUED ON PAGE 2 →</span>
+      </div>
+    </div>
+
+    <!-- ==================== PAGE 2 ==================== -->
+    <div class="page" id="page-2">
+      <div>
+        <div class="page-header">
+          <div class="brand-group">
+            <span class="super-title">Safaricom PLC · Technology &amp; Network Operations Division</span>
+            <h2 class="doc-title">Technology Choices, Clustering &amp; Security</h2>
+            <p class="doc-subtitle">Component Justifications, Spatial Clustering Algorithms, and Governance Safeguards</p>
+          </div>
+          <div class="meta-box">
+            <div>DOC ID: SAF-SEMA-ARCH-v2.2</div>
+            <div>STATUS: Approved Production</div>
+            <div>SECURITY: Safaricom Restricted</div>
+            <div>PAGE 2 OF 2</div>
+          </div>
+        </div>
+
+        <!-- Section 3: Technology Choices -->
+        <div class="section-title">3. Technology Choices &amp; Architectural Rationale</div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 22%;">Component</th>
+              <th style="width: 28%;">Technology Selected</th>
+              <th>Architectural Rationale &amp; Tradeoff Analysis</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Fullstack Host</strong></td>
+              <td>Node.js 22 LTS · Express 4 · Vite 8</td>
+              <td>Unified single-port (3000) execution. Express proxies server-side Gemini requests avoiding API key leakage. Vite middlewares handle HMR and SPA serving in development.</td>
+            </tr>
+            <tr>
+              <td><strong>Frontend Framework</strong></td>
+              <td>React 19 · Tailwind CSS v4</td>
+              <td>Componentized, high-throughput reactive interface. Tailwind v4 CSS-first engine provides sub-10ms bundle builds with zero runtime CSS-in-JS overhead.</td>
+            </tr>
+            <tr>
+              <td><strong>Multimodal Vision &amp; NLP</strong></td>
+              <td>@google/genai SDK (gemini-3.8-flash)</td>
+              <td>Delivers multimodal OCR and contextual scene understanding (ONT router lights, mobile error prompts) in &lt;1.2s. Enforces strict JSON schemas for automated triage.</td>
+            </tr>
+            <tr>
+              <td><strong>Browser Edge Compression</strong></td>
+              <td>HTML5 Canvas 2D Rasterizer</td>
+              <td>Client-side resizing (max 1600px, 0.82 JPEG quality) downsamples multi-megabyte photos to ~1 MB before upload, preventing server memory spikes.</td>
+            </tr>
+            <tr>
+              <td><strong>Persistence &amp; State</strong></td>
+              <td>In-Memory Registry + LocalStorage</td>
+              <td>Stateless container resilience with browser local caching. Provides immediate response latency without external database handshake dependencies.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Section 4: Root Cause Hypothesis & Cluster Correlation -->
+        <div class="section-title">4. Spatial-Temporal Clustering &amp; "Possible Cause" Heuristics</div>
+        <p style="margin-bottom: 8px;">
+          Rather than presenting naive single-ticket lists, SEMA groups incoming incidents by geographic county/ward using a <strong>60-minute sliding window</strong>. Any area accumulating ≥3 tickets automatically triggers cluster correlation:
+        </p>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">
+              <span class="tag tag-amber">ALGORITHM</span>
+              <span>Category Breakdown &amp; Ratios</span>
+            </div>
+            <div class="card-body">
+              Each cluster computes a strict category breakdown (e.g., <strong>Fibre 8 · M-PESA 5</strong>). The highest-count category is established as the primary driver, while secondary categories are highlighted with the badge:
+              <div style="margin: 6px 0;">
+                <span class="tag tag-amber">Possibly related (same area and time)</span>
+              </div>
+              Accompanied by a 1-line AI contextual hypothesis explaining how fixed backhaul failures knocked out local merchant payment callbacks.
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">
+              <span class="tag">LABELING STANDARD</span>
+              <span>Possible Cause (AI Hypothesis)</span>
+            </div>
+            <div class="card-body">
+              In full adherence to engineering precision, the diagnostic heading is titled <strong>"Possible cause (AI hypothesis)"</strong>. This clarifies to NOC managers that the correlation is an intelligent predictive hypothesis based on telecom topology, avoiding premature assumption of physical severed lines until confirmed by field OTDR instruments.
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 5: Response Units & SLA Routing Matrix -->
+        <div class="section-title">5. Dedicated Safaricom Response Units &amp; Target SLAs</div>
+        
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 25%;">Response Team</th>
+              <th style="width: 22%;">Designated Lead</th>
+              <th style="width: 18%;">SLA Standard</th>
+              <th>Operational Mandate</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Home Fibre &amp; Fixed NOC</strong></td>
+              <td>Eng. Dennis Kiprono</td>
+              <td><span class="tag tag-red">2 Hours</span> (Urgent)</td>
+              <td>Metro feeder cable faults, optical node loss (red LOS light), OLT port re-routing.</td>
+            </tr>
+            <tr>
+              <td><strong>M-PESA Escalations Unit</strong></td>
+              <td>Officer Grace Mwangi</td>
+              <td><span class="tag tag-red">30 Mins</span> (Emergency)</td>
+              <td>Hospital/Pharmacy Paybill stuck callbacks, merchant Till settlements, reversal delays.</td>
+            </tr>
+            <tr>
+              <td><strong>4G / 5G Mobile BTS RAN Team</strong></td>
+              <td>Supervisor Brian Otieno</td>
+              <td><span class="tag tag-amber">4 Hours</span> (High)</td>
+              <td>Radio Access Network mast power outages, carrier dropouts, cell sector congestion.</td>
+            </tr>
+            <tr>
+              <td><strong>SIM Swap &amp; Cyber-Fraud Desk</strong></td>
+              <td>Insp. Hassan Ali</td>
+              <td><span class="tag tag-red">1 Hour</span> (Urgent)</td>
+              <td>Unauthorized line replacement freezes, social engineering credential theft alerts.</td>
+            </tr>
+            <tr>
+              <td><strong>Customer Care &amp; Billing</strong></td>
+              <td>Coord. Agnes Muthoni</td>
+              <td><span class="tag">12–24 Hours</span></td>
+              <td>Bonga Points, post-pay tariff adjustments, promotional SMS subscription inquiries.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Section 6: Security & Privacy Safeguards -->
+        <div class="section-title">6. Security, Anti-Fraud &amp; Governance Safeguards</div>
+        <p style="font-size: 9.5pt; color: var(--slate-700);">
+          1. <strong>Customer Protection Note:</strong> The customer portal explicitly mandates: <em>"Do not include PINs, ID numbers or full M-PESA messages."</em><br/>
+          2. <strong>AI Automated Scrubbing:</strong> Gemini prompt configurations filter out inadvertent biometric, national identity, or authorization tokens before draft generation.<br/>
+          3. <strong>Resilient Non-Blocking UX:</strong> If vision OCR is inconclusive or the image is unrelated, SEMA prompts the citizen to confirm typed text. Ticket submission is <strong>never blocked</strong> by an upstream AI error.
+        </p>
+      </div>
+
+      <div class="page-footer">
+        <span>SAFARICOM PLC · NAIROBI, KENYA · SEMA SYSTEM ARCHITECTURE MANUAL</span>
+        <span>PAGE 2 OF 2 · END OF SPECIFICATION</span>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "name": "SEMA — Voice & Text Problem Reporting Platform",
+  "description": "Kenyan multilingual AI voice and text capture platform supporting English, Kiswahili, and Sheng. Tell us the problem and we will fix it.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
