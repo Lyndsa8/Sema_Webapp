@@ -10,74 +10,162 @@ import { evaluateAndAutoDispatch } from './autoDispatch';
 import { determineSeedPriority, getCategoryAndTeamForSeed } from './clusterComputation';
 
 /**
- * Normalises arbitrary channel names and capture methods so tickets count into
- * their canonical Channel Mix tiles:
- * - "Twitter (X)", "X", "Twitter" -> Twitter
- * - "Call Center CRM" -> Call Center
- * - "Web Voice Portal" -> Web Voice
- * - "Zuri", "One App", "USSD", "LinkedIn", "WhatsApp", "Email" -> their own tiles
- * - Instagram -> Instagram (0 if empty)
- */
-export function normalizeChannelForTile(channel?: string, captureMethod?: string): string {
-  if (captureMethod === 'voice' && (!channel || channel === 'Web Voice Portal' || channel === 'Web Voice')) {
-    return 'Web Voice';
-  }
-  const raw = (channel || '').trim();
-  const lower = raw.toLowerCase();
-
-  if (lower === 'twitter (x)' || lower === 'x' || lower === 'twitter') {
-    return 'Twitter';
-  }
-  if (lower === 'call center crm' || lower === 'call center' || lower === 'crm') {
-    return 'Call Center';
-  }
-  if (lower === 'web voice portal' || lower === 'web voice' || lower === 'voice portal') {
-    return 'Web Voice';
-  }
-  if (lower === 'zuri') {
-    return 'Zuri';
-  }
-  if (lower === 'one app' || lower === 'oneapp' || lower === 'my safaricom' || lower === 'mysafaricom') {
-    return 'One App';
-  }
-  if (lower === 'ussd') {
-    return 'USSD';
-  }
-  if (lower === 'linkedin') {
-    return 'LinkedIn';
-  }
-  if (lower === 'whatsapp') {
-    return 'WhatsApp';
-  }
-  if (lower === 'email') {
-    return 'Email';
-  }
-  if (lower === 'instagram') {
-    return 'Instagram';
-  }
-  if (captureMethod === 'voice') {
-    return 'Web Voice';
-  }
-  return raw || 'Web Voice';
-}
-
-/**
- * Canonical 10 Channel Mix tiles in priority order
+ * Canonical 10 Channel Mix tiles in order
  */
 export const CHANNEL_MIX_TILES = [
   'Twitter',
-  'Call Center',
-  'Web Voice',
   'Zuri',
   'One App',
-  'USSD',
   'LinkedIn',
+  'Web Voice',
   'WhatsApp',
+  'Call Center',
+  'USSD',
   'Email',
   'Instagram',
 ] as const;
 
 export type ChannelMixTileName = (typeof CHANNEL_MIX_TILES)[number];
+
+/**
+ * Creates ONE shared function normaliseChannel(name) used everywhere channels are
+ * counted, filtered or displayed:
+ * - "Twitter (X)", "Twitter", "X" -> Twitter
+ * - "Call Center CRM", "Call Center", "Call centre" -> Call Center
+ * - "Web Voice Portal", "Web Voice" -> Web Voice
+ * - Zuri, One App, USSD, LinkedIn, WhatsApp, Email, Instagram -> themselves
+ * Matching ignores case and extra spaces.
+ */
+export function normaliseChannel(name?: string | null, captureMethod?: string | null): string {
+  if (captureMethod === 'voice' && (!name || !name.trim())) {
+    return 'Web Voice';
+  }
+  const clean = (name || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+
+  if (!clean) {
+    return captureMethod === 'voice' ? 'Web Voice' : 'Web Voice';
+  }
+
+  // Twitter (X), Twitter, X -> Twitter
+  if (clean === 'twitter (x)' || clean === 'twitter' || clean === 'x') {
+    return 'Twitter';
+  }
+
+  // Call Center CRM, Call Center, Call centre -> Call Center
+  if (
+    clean === 'call center crm' ||
+    clean === 'call center' ||
+    clean === 'call centre' ||
+    clean === 'call centre crm' ||
+    clean === 'crm'
+  ) {
+    return 'Call Center';
+  }
+
+  // Web Voice Portal, Web Voice -> Web Voice
+  if (
+    clean === 'web voice portal' ||
+    clean === 'web voice' ||
+    clean === 'voice portal' ||
+    clean === 'voice'
+  ) {
+    return 'Web Voice';
+  }
+
+  // Zuri -> Zuri
+  if (clean === 'zuri') {
+    return 'Zuri';
+  }
+
+  // One App -> One App
+  if (
+    clean === 'one app' ||
+    clean === 'oneapp' ||
+    clean === 'my safaricom' ||
+    clean === 'mysafaricom'
+  ) {
+    return 'One App';
+  }
+
+  // USSD -> USSD
+  if (clean === 'ussd') {
+    return 'USSD';
+  }
+
+  // LinkedIn -> LinkedIn
+  if (clean === 'linkedin') {
+    return 'LinkedIn';
+  }
+
+  // WhatsApp -> WhatsApp
+  if (clean === 'whatsapp' || clean === 'whats app') {
+    return 'WhatsApp';
+  }
+
+  // Email -> Email
+  if (clean === 'email' || clean === 'e-mail') {
+    return 'Email';
+  }
+
+  // Instagram -> Instagram
+  if (clean === 'instagram' || clean === 'ig') {
+    return 'Instagram';
+  }
+
+  if (captureMethod === 'voice') {
+    return 'Web Voice';
+  }
+
+  return (name || '').trim() || 'Web Voice';
+}
+
+// Backward-compatibility aliases
+export const normalizeChannel = normaliseChannel;
+export const normalizeChannelForTile = normaliseChannel;
+
+/**
+ * Computes integer percentages for channel counts using the largest remainder method
+ * (Hare-Niemeyer) so that the percentages always add up to exactly 100%.
+ */
+export function computeChannelPercentages(
+  counts: Record<string, number>,
+  channels: readonly string[],
+  total: number
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  if (total <= 0) {
+    for (const ch of channels) result[ch] = 0;
+    return result;
+  }
+
+  const items = channels.map((ch) => {
+    const count = counts[ch] || 0;
+    const raw = (count / total) * 100;
+    const floored = Math.floor(raw);
+    const remainder = raw - floored;
+    return { ch, count, floored, remainder };
+  });
+
+  const sumFloored = items.reduce((acc, item) => acc + item.floored, 0);
+  let diff = 100 - sumFloored;
+
+  // Distribute remaining percentage points to largest remainders (only to channels with count > 0)
+  const sorted = [...items]
+    .filter((it) => it.count > 0)
+    .sort((a, b) => b.remainder - a.remainder);
+
+  for (let i = 0; i < diff && i < sorted.length; i++) {
+    sorted[i].floored += 1;
+  }
+
+  for (const item of items) {
+    result[item.ch] = item.floored;
+  }
+  return result;
+}
 
 /**
  * Converts a raw record from demoComplaints.json into a full SubmissionRecord.

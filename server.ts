@@ -5,6 +5,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
+import { InflowChannel } from './src/types';
+import { buildRuleBasedAnalytics, getAllDemoSubmissionRecords } from './src/utils/clusterComputation';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,7 +86,7 @@ export interface SubmissionRecord {
   emailAlertSentAt?: string;
   emailAlertSubject?: string;
   emailAlertBody?: string;
-  channel?: string;
+  channel?: InflowChannel;
   operationalCategory?: string;
   locationTown?: string;
   handle?: string;
@@ -126,36 +128,8 @@ export interface EmailDispatchLog {
   status: 'Delivered' | 'Queued' | 'Simulated';
 }
 
-const emailDispatchLogs: EmailDispatchLog[] = [
-  {
-    id: 'email-init-1',
-    submissionId: 'sema-101',
-    referenceCode: 'SEMA-SAF-8041',
-    toEmail: 'dennis.kiprono@safaricom.co.ke',
-    officerName: 'Eng. Dennis Kiprono',
-    teamName: 'Safaricom Home Fibre & Enterprise NOC',
-    category: 'Home Fibre & Fixed Internet',
-    priority: 'Urgent',
-    subject: '[SAFARICOM NOC DISPATCH] SEMA-SAF-8041 - Home Fibre Optical Node Fault (Urgent Priority)',
-    body: `INCIDENT REFERENCE: SEMA-SAF-8041\nPRIORITY / URGENCY: URGENT\nTARGET SLA: 2 hours\nOFFICER: Eng. Dennis Kiprono (dennis.kiprono@safaricom.co.ke)\nLOCATION: Nairobi · Roysambu / Lumumba Drive\n\nCUSTOMER REPORT:\n"Router ya Safaricom Home Fibre inawaka red hapa Roysambu karibu na TRM tangu jana usiku, internet imelost na kazi imesimama. Tafadhali tusaidieni kuangalia fiber cable haraka."\n\nDIRECTIVES: Safaricom metro fiber splicing crew dispatched with OTDR fault locator. Re-splicing drop cable at pole terminal.`,
-    sentAt: new Date(Date.now() - 1000 * 60 * 17).toISOString(),
-    status: 'Delivered',
-  },
-  {
-    id: 'email-init-2',
-    submissionId: 'sema-102',
-    referenceCode: 'SEMA-SAF-8042',
-    toEmail: 'grace.mwangi@safaricom.co.ke',
-    officerName: 'Officer Grace Mwangi',
-    teamName: 'M-PESA Escalations & Reversals Operations',
-    category: 'M-PESA & Financial Services',
-    priority: 'Urgent',
-    subject: '[SAFARICOM M-PESA ALERT] SEMA-SAF-8042 - Hospital Paybill Transaction Stuck (Urgent Priority)',
-    body: `INCIDENT REFERENCE: SEMA-SAF-8042\nPRIORITY / URGENCY: URGENT\nTARGET SLA: 30 minutes\nOFFICER: Officer Grace Mwangi (grace.mwangi@safaricom.co.ke)\nLOCATION: Nairobi · Umoja / Buruburu\n\nCUSTOMER REPORT:\n"Manze chapaa ya M-PESA imekwama kwa Paybill ya hospitali tangu asubuhi lakini message haijakam na mgonjwa hawezi release-iwa. Chanueni wasee wa M-PESA wasort hii transaction mbio!"\n\nDIRECTIVES: Emergency M-PESA gateway transaction query executed. Forced API settlement in progress.`,
-    sentAt: new Date(Date.now() - 1000 * 60 * 40).toISOString(),
-    status: 'Delivered',
-  },
-];
+const emailDispatchLogs: EmailDispatchLog[] = [];
+
 
 const KENYAN_RESPONSE_TEAMS = [
   {
@@ -670,160 +644,7 @@ CRITICAL RULES:
   };
 }
 
-const submissionsStore: SubmissionRecord[] = [
-  {
-    id: 'sema-101',
-    referenceCode: 'SEMA-SAF-8041',
-    text: 'Router ya Safaricom Home Fibre inawaka red hapa Roysambu karibu na TRM tangu jana usiku, internet imelost na kazi imesimama. Tafadhali tusaidieni kuangalia fiber cable haraka.',
-    detectedLanguage: 'Kiswahili',
-    englishTranslation: 'The Safaricom Home Fibre router has a blinking red LOS light here in Roysambu near TRM since last night, internet is down and remote work has stopped. Please inspect the fiber optical cable urgently.',
-    category: 'Home Fibre & Fixed Internet',
-    countyOrWard: 'Nairobi · Roysambu / Lumumba Drive',
-    captureMethod: 'voice',
-    aiCommitmentResponse: 'Tumepokea ripoti yako kuhusu mtandao wa Safaricom Home Fibre Roysambu. Timu yetu ya fiber engineering imetumwa mara moja kurekebisha line hiyo.',
-    status: 'In Progress',
-    priority: 'Urgent',
-    assignedTeam: 'Safaricom Home Fibre & Enterprise NOC',
-    assignedOfficer: 'Eng. Dennis Kiprono',
-    assignedOfficerEmail: 'dennis.kiprono@safaricom.co.ke',
-    emailAlertSent: true,
-    emailAlertRecipient: 'dennis.kiprono@safaricom.co.ke',
-    emailAlertSentAt: new Date(Date.now() - 1000 * 60 * 17).toISOString(),
-    emailAlertSubject: '[SAFARICOM NOC DISPATCH] SEMA-SAF-8041 - Home Fibre Optical Node Fault (Urgent Priority)',
-    emailAlertBody: `======================================================
-SAFARICOM PLC - RAPID INCIDENT DISPATCH NOTICE
-Network Operations Center (NOC) & Customer Escalations
-======================================================
-
-INCIDENT REFERENCE: SEMA-SAF-8041
-PRIORITY / URGENCY: URGENT
-TARGET SLA:         2 hours
-CATEGORY:           Home Fibre & Fixed Internet
-LOCATION:           Nairobi · Roysambu / Lumumba Drive
-
-ASSIGNED FIELD OFFICER:
-  Engineer: Eng. Dennis Kiprono
-  Email:    dennis.kiprono@safaricom.co.ke
-  Team:     Safaricom Home Fibre & Enterprise NOC
-
-------------------------------------------------------
-CUSTOMER INCIDENT REPORT (ORIGINAL):
-------------------------------------------------------
-"Router ya Safaricom Home Fibre inawaka red hapa Roysambu karibu na TRM tangu jana usiku, internet imelost na kazi imesimama. Tafadhali tusaidieni kuangalia fiber cable haraka."
-Language: Kiswahili (Capture Method: voice)
-English Translation: "The Safaricom Home Fibre router has a blinking red LOS light here in Roysambu near TRM since last night, internet is down and remote work has stopped. Please inspect the fiber optical cable urgently."
-
-------------------------------------------------------
-DISPATCH & AI ROUTING DIRECTIVES:
-------------------------------------------------------
-Routing Rationale: Red Optical Loss of Signal (LOS) reported on feeder cable affecting residential broadband cluster near TRM.
-Directives:        Safaricom metro fiber splicing crew dispatched with OTDR fault locator. Re-splicing drop cable at pole terminal.
-
-REQUIRED IMMEDIATE ACTIONS:
-1. Acknowledge dispatch ticket and verify line optical power (dBm) within SLA window (2 hours).
-2. Update incident milestone status to "In Progress" in the Safaricom Dispatch Console.
-3. Verify customer optical link recovery and submit clearance memo.
-
-Dispatch Console Access: https://safaricom.co.ke/dispatch?ref=SEMA-SAF-8041
-Automated alert dispatched by Safaricom SEMA Intelligent NOC Operations.
-======================================================`,
-    aiClassification: {
-      category: 'Home Fibre & Fixed Internet',
-      urgency: 'Urgent',
-      recommendedTeam: 'Safaricom Home Fibre & Enterprise NOC',
-      rationale: 'Red Optical Loss of Signal (LOS) reported on feeder cable affecting residential broadband cluster near TRM.',
-      estimatedSLA: '2 hours',
-    },
-    adminNotes: 'Safaricom metro fiber splicing crew dispatched with OTDR fault locator. Re-splicing drop cable at pole terminal.',
-    createdAt: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-  },
-  {
-    id: 'sema-102',
-    referenceCode: 'SEMA-SAF-8042',
-    text: 'Manze chapaa ya M-PESA imekwama kwa Paybill ya hospitali tangu asubuhi lakini message haijakam na mgonjwa hawezi release-iwa. Chanueni wasee wa M-PESA wasort hii transaction mbio!',
-    detectedLanguage: 'Sheng',
-    englishTranslation: 'My M-PESA money has been stuck on a hospital Paybill since morning but no confirmation SMS was received and the patient cannot be discharged. Alert M-PESA core operations to resolve this transaction urgently!',
-    category: 'M-PESA & Financial Services',
-    countyOrWard: 'Nairobi · Umoja / Buruburu',
-    captureMethod: 'voice',
-    aiCommitmentResponse: 'Rada imefika safi! M-PESA core escalations desk imepewa alert kuhusu hii transaction na wanacheck settlement records mara hii.',
-    status: 'Assigned',
-    priority: 'Urgent',
-    assignedTeam: 'M-PESA Escalations & Reversals Operations',
-    assignedOfficer: 'Officer Grace Mwangi',
-    assignedOfficerEmail: 'grace.mwangi@safaricom.co.ke',
-    emailAlertSent: true,
-    emailAlertRecipient: 'grace.mwangi@safaricom.co.ke',
-    emailAlertSentAt: new Date(Date.now() - 1000 * 60 * 40).toISOString(),
-    emailAlertSubject: '[SAFARICOM M-PESA ALERT] SEMA-SAF-8042 - Hospital Paybill Transaction Stuck (Urgent Priority)',
-    emailAlertBody: `======================================================
-SAFARICOM PLC - RAPID INCIDENT DISPATCH NOTICE
-M-PESA Escalations & Core Operations Command
-======================================================
-
-INCIDENT REFERENCE: SEMA-SAF-8042
-PRIORITY / URGENCY: URGENT
-TARGET SLA:         30 minutes
-CATEGORY:           M-PESA & Financial Services
-LOCATION:           Nairobi · Umoja / Buruburu
-
-ASSIGNED FIELD OFFICER:
-  Officer: Officer Grace Mwangi
-  Email:   grace.mwangi@safaricom.co.ke
-  Team:    M-PESA Escalations & Reversals Operations
-
-------------------------------------------------------
-CUSTOMER INCIDENT REPORT (ORIGINAL):
-------------------------------------------------------
-"Manze chapaa ya M-PESA imekwama kwa Paybill ya hospitali tangu asubuhi lakini message haijakam na mgonjwa hawezi release-iwa. Chanueni wasee wa M-PESA wasort hii transaction mbio!"
-Language: Sheng (Capture Method: voice)
-English Translation: "My M-PESA money has been stuck on a hospital Paybill since morning but no confirmation SMS was received and the patient cannot be discharged. Alert M-PESA core operations to resolve this transaction urgently!"
-
-------------------------------------------------------
-DISPATCH & AI ROUTING DIRECTIVES:
-------------------------------------------------------
-Routing Rationale: Patient discharge delayed due to pending hospital Paybill transaction callback timeout.
-Directives:        Emergency M-PESA gateway transaction query executed. Forced API settlement in progress.
-
-REQUIRED IMMEDIATE ACTIONS:
-1. Re-query core M-PESA switch log and push B2C/B2B confirmation callback within target SLA (30 min).
-2. Update incident milestone status to "In Progress" in the Safaricom Dispatch Console.
-3. Transmit confirmation SMS to citizen and hospital billing accounts desk.
-
-Dispatch Console Access: https://safaricom.co.ke/dispatch?ref=SEMA-SAF-8042
-Automated alert dispatched by Safaricom SEMA Intelligent NOC Operations.
-======================================================`,
-    aiClassification: {
-      category: 'M-PESA & Financial Services',
-      urgency: 'Urgent',
-      recommendedTeam: 'M-PESA Escalations & Reversals Operations',
-      rationale: 'Patient discharge delayed due to pending hospital Paybill transaction callback timeout.',
-      estimatedSLA: '30 minutes',
-    },
-    adminNotes: 'Emergency M-PESA gateway transaction query executed. Forced API settlement in progress.',
-    createdAt: new Date(Date.now() - 1000 * 60 * 42).toISOString(),
-  },
-  {
-    id: 'sema-103',
-    referenceCode: 'SEMA-SAF-8043',
-    text: 'Our entire estate along Kenyatta Avenue in Nakuru CBD has experienced severe 4G and 5G network dropouts with emergency calls only on all Safaricom lines since the thunderstorm yesterday.',
-    detectedLanguage: 'English',
-    category: 'Mobile Network & 4G/5G Coverage',
-    countyOrWard: 'Nakuru · Nakuru CBD / Biashara',
-    captureMethod: 'text',
-    aiCommitmentResponse: 'Thank you for reporting this network outage. Safaricom Radio Access Network (RAN) engineering has scheduled immediate BTS mast diagnostic and power restoration within 4 hours.',
-    status: 'Received',
-    priority: 'High',
-    aiClassification: {
-      category: 'Mobile Network & 4G/5G Coverage',
-      urgency: 'High',
-      recommendedTeam: '4G / 5G Mobile Network & Base Transceiver (BTS) Team',
-      rationale: 'Severe 4G/5G radio carrier dropout following thunderstorm affecting central business district.',
-      estimatedSLA: '4 hours',
-    },
-    createdAt: new Date(Date.now() - 1000 * 60 * 95).toISOString(),
-  },
-];
+const submissionsStore: SubmissionRecord[] = [];
 
 async function startServer() {
   const app = express();
@@ -1972,79 +1793,105 @@ Automated alert dispatched by SEMA Intelligent Dispatch System.
   });
 
   // 10. Admin: AI-Powered Issue Analytics & Synthesis
-  app.get('/api/admin/analytics', async (_req, res) => {
-    const total = submissionsStore.length;
-    const categoryCounts: Record<string, number> = {};
-    const urgencyCounts: Record<string, number> = { Urgent: 0, High: 0, Medium: 0, Routine: 0 };
-    const langCounts: Record<string, number> = { English: 0, Kiswahili: 0, Sheng: 0 };
+  app.all('/api/admin/analytics', async (req, res) => {
+    try {
+      const incomingSubmissions = Array.isArray(req.body?.submissions) ? req.body.submissions : null;
+      const incomingClusters = Array.isArray(req.body?.clusters) ? req.body.clusters : null;
+      const targetSubmissions =
+        incomingSubmissions && incomingSubmissions.length > 0
+          ? incomingSubmissions
+          : submissionsStore.length > 0
+          ? submissionsStore
+          : getAllDemoSubmissionRecords();
 
-    for (const sub of submissionsStore) {
-      const cat = sub.category || 'Civic & Public Services';
-      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+      const ruleBased = buildRuleBasedAnalytics(targetSubmissions, incomingClusters);
+      let aiBrief = ruleBased.executiveSummary;
+      let recommendations = ruleBased.recommendations;
+      let isAiPowered = false;
 
-      const urg = sub.priority || 'Medium';
-      urgencyCounts[urg] = (urgencyCounts[urg] || 0) + 1;
+      const ai = getGenAIClient();
+      if (ai && targetSubmissions.length > 0) {
+        try {
+          const sampleTickets = targetSubmissions.slice(0, 20).map((s: any) => ({
+            id: s.id,
+            text: s.text,
+            category: s.category || s.operationalCategory,
+            area: s.countyOrWard || s.locationTown,
+            channel: s.channel,
+            priority: s.priority,
+          }));
 
-      const lang = sub.detectedLanguage || 'English';
-      langCounts[lang] = (langCounts[lang] || 0) + 1;
-    }
+          const prompt = `You are the Chief Network Operations Center (NOC) and Customer Incident Analyst for Safaricom PLC (Kenya).
+Analyze these actual subscriber complaints and operational clusters from the store (${targetSubmissions.length} total tickets):
+Sample tickets: ${JSON.stringify(sampleTickets)}
 
-    const categories = Object.entries(categoryCounts)
-      .map(([name, count]) => ({
-        name,
-        count,
-        percentage: total > 0 ? Math.round((count / total) * 100) : 0,
-      }))
-      .sort((a, b) => b.count - a.count);
+CRITICAL REQUIREMENTS:
+1. "executiveSummary": A concise 2-sentence executive incident synthesis based strictly on the actual tickets and clusters in the store, not generic text. Name specific areas (such as Ruaka, Nyali) and the dominant categories.
+2. "recommendations": An array of 3 to 5 operational directives, strictly ordered by urgency (Urgent first, then High, then Medium).
+   - Each directive MUST name a specific cluster, area, channel, or category AND the exact response team to act (e.g. Safaricom Home Fibre & Enterprise NOC, M-PESA Escalations & Reversals Operations, 4G / 5G Mobile Network & Base Transceiver (BTS) Team, SIM Swap, Identity Protection & Cyber-Fraud Unit, Customer Experience & Airtime Billing Desk).
+   - For example: Ruaka fibre and M-PESA cluster, Nyali slow-data cluster, repeat customer reports, and SIM-swap cases for the fraud team.
+   - M-PESA directives MUST match the actual complaints (customer transfers deducted but not delivered, missing confirmation SMS).
+   - NEVER mention B2B.
+   - NEVER invent SLA figures.
+   - Return exactly 3 to 5 directives.`;
 
-    const topCategory = categories[0]?.name || 'Home Fibre & Fixed Internet';
-    const topCount = categories[0]?.count || 0;
+          const aiResponse = await ai.models.generateContent({
+            model: 'gemini-3.8-flash',
+            contents: prompt,
+            config: {
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  executiveSummary: { type: Type.STRING },
+                  recommendations: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                },
+                required: ['executiveSummary', 'recommendations'],
+              },
+            },
+          });
 
-    let aiBrief = `Safaricom SEMA NOC Synthesis: Analyzed ${total} customer incident logs across Kenya. Primary customer demand centers on "${topCategory}" (${topCount} incidents). Priority focus is directed towards optical fiber re-splicing, M-PESA transaction callbacks, and 4G/5G mast power continuity.`;
-    let recommendations = [
-      `Dispatch Safaricom metro fiber splicing teams with OTDR fault locators along active red-LOS clusters.`,
-      `Audit core M-PESA B2C/B2B transaction switch reconciliation to achieve 30-minute SLA on hospital and till payments.`,
-      `Maintain automated proactive SMS notifications in Kiswahili and Sheng to keep affected subscribers informed.`,
-    ];
-
-    const ai = getGenAIClient();
-    if (ai) {
-      try {
-        const prompt = `You are the Chief Network Operations Center (NOC) and Customer Incident Analyst for Safaricom PLC (Kenya).
-We have ${total} subscriber incident reports across these categories: ${JSON.stringify(categories)}.
-Urgency counts: ${JSON.stringify(urgencyCounts)}.
-Languages used: ${JSON.stringify(langCounts)}.
-
-Provide a concise 2-sentence executive summary and 3 bullet point actionable technical recommendations for Safaricom NOC directors and response team leads. Return JSON with keys: "executiveSummary" (string) and "recommendations" (array of 3 strings).`;
-
-        const aiResponse = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-          },
-        });
-
-        if (aiResponse.text) {
-          const parsed = JSON.parse(aiResponse.text);
-          if (parsed.executiveSummary) aiBrief = parsed.executiveSummary;
-          if (Array.isArray(parsed.recommendations)) recommendations = parsed.recommendations;
+          if (aiResponse.text) {
+            const parsed = JSON.parse(aiResponse.text);
+            if (parsed.executiveSummary && typeof parsed.executiveSummary === 'string' && parsed.executiveSummary.trim()) {
+              aiBrief = parsed.executiveSummary.trim();
+            }
+            if (Array.isArray(parsed.recommendations) && parsed.recommendations.length >= 3) {
+              const cleaned = parsed.recommendations
+                .map((r: string) => r.replace(/\bB2B\b/gi, 'merchant'))
+                .slice(0, 5);
+              if (cleaned.length >= 3) {
+                recommendations = cleaned;
+                isAiPowered = true;
+              }
+            }
+          }
+        } catch (aiErr) {
+          console.warn('AI analytics generation notice, using rule-based fallback:', aiErr);
         }
-      } catch (err) {
-        console.warn('AI analytics generation notice:', err);
       }
-    }
 
-    return res.json({
-      totalReports: total,
-      categories,
-      urgencyCounts,
-      langCounts,
-      executiveSummary: aiBrief,
-      recommendations,
-      generatedAt: new Date().toISOString(),
-      aiPowered: Boolean(ai),
-    });
+      return res.json({
+        totalReports: targetSubmissions.length,
+        executiveSummary: aiBrief,
+        recommendations,
+        generatedAt: new Date().toISOString(),
+        aiPowered: isAiPowered,
+      });
+    } catch (err: any) {
+      console.error('Analytics endpoint error:', err);
+      const fallback = buildRuleBasedAnalytics(submissionsStore as any);
+      return res.json({
+        totalReports: submissionsStore.length,
+        executiveSummary: fallback.executiveSummary,
+        recommendations: fallback.recommendations,
+        generatedAt: new Date().toISOString(),
+        aiPowered: false,
+      });
+    }
   });
 
   // Serve static assets from public/ (video walkthrough, docs, images) with byte range support

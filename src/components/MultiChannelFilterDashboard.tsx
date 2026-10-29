@@ -11,18 +11,22 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 
-export const CHANNELS = [
-  'All Channels',
-  'Call Center CRM',
-  'WhatsApp',
-  'Twitter (X)',
-  'LinkedIn',
-  'Instagram',
-  'Email',
-  'Web Voice Portal',
+export const CANONICAL_CHANNELS = [
+  'Twitter',
   'Zuri',
   'One App',
+  'LinkedIn',
+  'Web Voice',
+  'WhatsApp',
+  'Call Center',
   'USSD',
+  'Email',
+  'Instagram',
+] as const;
+
+export const CHANNELS = [
+  'All Channels',
+  ...CANONICAL_CHANNELS,
 ] as const;
 
 export const OPERATIONAL_CATEGORIES = [

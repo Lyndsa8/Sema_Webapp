@@ -52,46 +52,7 @@ const KENYAN_LOCATIONS = [
   'Machakos · Machakos Town',
 ];
 
-const INITIAL_KENYAN_SUBMISSIONS: SubmissionRecord[] = [
-  {
-    id: 'sema-101',
-    referenceCode: 'SEMA-SAF-8041',
-    text: 'Router ya Safaricom Home Fibre inawaka red hapa Roysambu karibu na TRM tangu jana usiku, internet imelost na kazi imesimama. Tafadhali tusaidieni kuangalia fiber cable haraka.',
-    detectedLanguage: 'Kiswahili',
-    englishTranslation: 'The Safaricom Home Fibre router has a blinking red LOS light here in Roysambu near TRM since last night, internet is down and remote work has stopped. Please inspect the fiber optical cable urgently.',
-    category: 'Home Fibre & Fixed Internet',
-    countyOrWard: 'Nairobi · Roysambu / Lumumba Drive',
-    captureMethod: 'voice',
-    aiCommitmentResponse: 'Tumepokea ripoti yako kuhusu mtandao wa Safaricom Home Fibre Roysambu. Timu yetu ya fiber engineering imetumwa mara moja kurekebisha line hiyo.',
-    status: 'In Progress',
-    createdAt: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-  },
-  {
-    id: 'sema-102',
-    referenceCode: 'SEMA-SAF-8042',
-    text: 'Manze chapaa ya M-PESA imekwama kwa Paybill ya hospitali tangu asubuhi lakini message haijakam na mgonjwa hawezi release-iwa. Chanueni wasee wa M-PESA wasort hii transaction mbio!',
-    detectedLanguage: 'Sheng',
-    englishTranslation: 'My M-PESA money has been stuck on a hospital Paybill since morning but no confirmation SMS was received and the patient cannot be discharged. Alert M-PESA core operations to resolve this transaction urgently!',
-    category: 'M-PESA & Financial Services',
-    countyOrWard: 'Nairobi · Umoja / Buruburu',
-    captureMethod: 'voice',
-    aiCommitmentResponse: 'Rada imefika safi! M-PESA core escalations desk imepewa alert kuhusu hii transaction na wanacheck settlement records mara hii.',
-    status: 'Assigned',
-    createdAt: new Date(Date.now() - 1000 * 60 * 42).toISOString(),
-  },
-  {
-    id: 'sema-103',
-    referenceCode: 'SEMA-SAF-8043',
-    text: 'Our entire estate along Kenyatta Avenue in Nakuru CBD has experienced severe 4G and 5G network dropouts with emergency calls only on all Safaricom lines since the thunderstorm yesterday.',
-    detectedLanguage: 'English',
-    category: 'Mobile Network & 4G/5G Coverage',
-    countyOrWard: 'Nakuru · Nakuru CBD / Biashara',
-    captureMethod: 'text',
-    aiCommitmentResponse: 'Thank you for reporting this network outage. Safaricom Radio Access Network (RAN) engineering has scheduled immediate BTS mast diagnostic and power restoration within 4 hours.',
-    status: 'Received',
-    createdAt: new Date(Date.now() - 1000 * 60 * 95).toISOString(),
-  },
-];
+const INITIAL_KENYAN_SUBMISSIONS: SubmissionRecord[] = [];
 
 const LOCAL_SAMPLES: Record<
   string,
@@ -1037,6 +998,7 @@ export const VoiceTextCaptureHero: React.FC<VoiceTextCaptureHeroProps> = ({
       countyOrWard: countyOrWard.trim() || 'Kenya (General)',
       contactInfo: contactInfo.trim() || undefined,
       captureMethod: finalCaptureMethod,
+      channel: 'Web Voice Portal',
       attachedImages: attachedImages.length > 0 ? [...attachedImages] : undefined,
       imageAnalysis: imageAnalysis || undefined,
       aiCommitmentResponse: generateClientCommitment(problemContent, detectedLang, category),
@@ -1053,6 +1015,7 @@ export const VoiceTextCaptureHero: React.FC<VoiceTextCaptureHeroProps> = ({
           countyOrWard,
           contactInfo,
           captureMethod: finalCaptureMethod,
+          channel: 'Web Voice Portal',
           attachedImages: attachedImages.length > 0 ? attachedImages : undefined,
           imageAnalysis: imageAnalysis || undefined,
         }),

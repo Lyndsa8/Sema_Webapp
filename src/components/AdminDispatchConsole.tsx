@@ -63,6 +63,7 @@ import {
 } from '../types';
 import {
   CHANNELS,
+  CANONICAL_CHANNELS,
   OPERATIONAL_CATEGORIES,
   LOCATIONS,
 } from './MultiChannelFilterDashboard';
@@ -71,6 +72,7 @@ import {
   buildRecordFromDemoComplaint,
   getAllDemoSubmissionRecords,
   IncidentCluster,
+  buildRuleBasedAnalytics,
 } from '../utils/clusterComputation';
 import { DateRangePicker, DateRangeValue } from './DateRangePicker';
 import { evaluateAndAutoDispatch } from '../utils/autoDispatch';
@@ -78,7 +80,9 @@ import { triageTickets } from '../utils/triage';
 import {
   syncSimulatedFeeds,
   clearSyncedFeeds,
+  normaliseChannel,
   normalizeChannelForTile,
+  computeChannelPercentages,
   CHANNEL_MIX_TILES,
 } from '../utils/syncFeeds';
 
@@ -431,7 +435,19 @@ export const AdminDispatchConsole: React.FC<AdminDispatchConsoleProps> = ({
     recommendations: string[];
     aiPowered: boolean;
     compiledAt: string;
-  } | null>(null);
+  } | null>(() => {
+    try {
+      const initial = buildRuleBasedAnalytics(submissions, computeClustersFromStore(submissions));
+      return {
+        executiveSummary: initial.executiveSummary,
+        recommendations: initial.recommendations,
+        aiPowered: false,
+        compiledAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+    } catch {
+      return null;
+    }
+  });
 
   // Auto-collapse sidebar below 1100px wide
   useEffect(() => {
@@ -628,29 +644,33 @@ export const AdminDispatchConsole: React.FC<AdminDispatchConsoleProps> = ({
   const handleCompileAIAnalytics = async () => {
     setIsCompilingAI(true);
     try {
-      const res = await fetch('/api/admin/analytics');
+      const res = await fetch('/api/admin/analytics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          submissions,
+          clusters: computedClusters,
+        }),
+      });
       if (res.ok) {
         const data = await res.json();
-        setAiAnalyticsData({
-          executiveSummary: data.executiveSummary,
-          recommendations: data.recommendations,
-          aiPowered: data.aiPowered,
-          compiledAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        });
-      } else {
-        throw new Error('Fallback needed');
+        if (data && data.executiveSummary && Array.isArray(data.recommendations) && data.recommendations.length >= 3) {
+          setAiAnalyticsData({
+            executiveSummary: data.executiveSummary,
+            recommendations: data.recommendations,
+            aiPowered: Boolean(data.aiPowered),
+            compiledAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          });
+          return;
+        }
       }
+      throw new Error('API synthesis unavailable, using rule-based synthesis');
     } catch {
-      const topCat = pieChartData.items[0]?.category || 'Home Fibre & Fixed Internet';
-      const topPct = pieChartData.items[0]?.percentage || 45;
+      const fallback = buildRuleBasedAnalytics(submissions, computedClusters);
       setAiAnalyticsData({
-        executiveSummary: `Safaricom SEMA Operations Synthesis: Analyzed ${submissions.length} customer incident tickets across Kenya. Primary ticket concentration is "${topCat}" at ${topPct}% volume. Metro fiber re-splicing crews and M-PESA transaction recovery engineers are prioritized for immediate technical intervention.`,
-        recommendations: [
-          `Dispatch Safaricom metro fiber splicing teams with OTDR fault locators along active red-LOS clusters.`,
-          `Re-query core M-PESA B2C/B2B transaction switch reconciliation to achieve 30-minute SLA on hospital and till payments.`,
-          `Maintain proactive customer notifications via Kiswahili and Sheng channels to update affected subscribers.`,
-        ],
-        aiPowered: true,
+        executiveSummary: fallback.executiveSummary,
+        recommendations: fallback.recommendations,
+        aiPowered: false,
         compiledAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
     } finally {
@@ -676,6 +696,69 @@ export const AdminDispatchConsole: React.FC<AdminDispatchConsoleProps> = ({
     ).length;
     const emailAlertsSent = submissions.filter((s) => s.emailAlertSent).length;
     return { total, unassigned, inProgress, resolved, urgentCount, emailAlertsSent };
+  }, [submissions]);
+
+  // Real SLA compliance and turnaround computed strictly from resolved tickets
+  // If no tickets are resolved yet, show "Not enough resolved tickets yet" instead of a number
+  const slaMetrics = useMemo(() => {
+    const resolvedList = submissions.filter(
+      (s) => (s.status === 'Resolved' || s.status === 'Closed') && s.resolvedAt
+    );
+
+    if (resolvedList.length === 0) {
+      return {
+        hasData: false,
+        label: 'Not enough resolved tickets yet',
+        subtext: 'Requires resolved tickets to measure turnaround',
+      };
+    }
+
+    let compliantCount = 0;
+    let totalTurnaroundMs = 0;
+
+    for (const ticket of resolvedList) {
+      const startMs = new Date(ticket.slaStartedAt || ticket.createdAt).getTime();
+      const endMs = new Date(ticket.resolvedAt!).getTime();
+      const diffMs = Math.max(0, endMs - startMs);
+      totalTurnaroundMs += diffMs;
+
+      let thresholdHours = 24;
+      const estimatedSLA = (ticket.aiClassification?.estimatedSLA || '').toLowerCase();
+      if (estimatedSLA.includes('30 min')) thresholdHours = 0.5;
+      else if (estimatedSLA.includes('1 hour') || estimatedSLA.includes('1h')) thresholdHours = 1;
+      else if (estimatedSLA.includes('2 hour') || estimatedSLA.includes('2h')) thresholdHours = 2;
+      else if (estimatedSLA.includes('4 hour') || estimatedSLA.includes('4h')) thresholdHours = 4;
+      else if (estimatedSLA.includes('6 hour') || estimatedSLA.includes('6h')) thresholdHours = 6;
+      else if (estimatedSLA.includes('12 hour') || estimatedSLA.includes('12h')) thresholdHours = 12;
+      else if (estimatedSLA.includes('24 hour') || estimatedSLA.includes('24h')) thresholdHours = 24;
+      else {
+        const priority = ticket.priority || ticket.aiClassification?.urgency || 'Medium';
+        if (priority === 'Urgent') thresholdHours = 2;
+        else if (priority === 'High') thresholdHours = 4;
+        else if (priority === 'Medium') thresholdHours = 24;
+        else thresholdHours = 48;
+      }
+
+      if (diffMs <= thresholdHours * 60 * 60 * 1000) {
+        compliantCount++;
+      }
+    }
+
+    const pctOnTrack = Math.round((compliantCount / resolvedList.length) * 100);
+    const avgHours = totalTurnaroundMs / (resolvedList.length * 1000 * 60 * 60);
+
+    const turnaroundStr =
+      avgHours < 0.1
+        ? `${Math.max(1, Math.round(avgHours * 60))}m`
+        : avgHours < 1
+        ? `${Math.round(avgHours * 60)}m`
+        : `${avgHours.toFixed(1)}h`;
+
+    return {
+      hasData: true,
+      label: `${pctOnTrack}% on Track`,
+      subtext: `Avg turnaround: ${turnaroundStr} (${resolvedList.length} ${resolvedList.length === 1 ? 'ticket' : 'tickets'} resolved)`,
+    };
   }, [submissions]);
 
   // Urgent categories and dynamic subtitle reflecting the actual categories of urgent tickets
@@ -726,7 +809,7 @@ export const AdminDispatchConsole: React.FC<AdminDispatchConsoleProps> = ({
 
   // Channel, Category & Location helpers with normalization
   const getReportChannel = (sub: SubmissionRecord): string => {
-    return normalizeChannelForTile(sub.channel, sub.captureMethod);
+    return normaliseChannel(sub.channel, sub.captureMethod);
   };
 
   const getReportCategory = (sub: SubmissionRecord): string => {
@@ -747,23 +830,23 @@ export const AdminDispatchConsole: React.FC<AdminDispatchConsoleProps> = ({
     return textLoc.includes(target) || townLoc.includes(target);
   };
 
-  // Normalized Channel counts for Channel Mix & feed filters (Twitter, Call Center, Web Voice, Zuri, One App, USSD, LinkedIn, WhatsApp, Email, Instagram)
+  // Normalized Channel counts for Channel Mix & feed filters (Twitter 4, Zuri 4, One App 4, LinkedIn 3, Web Voice 3, WhatsApp 2, Call Center 2, USSD 2, Email 1, Instagram 0)
   const channelCounts = useMemo(() => {
     const counts: Record<string, number> = {
       'All Channels': submissions.length,
       Twitter: 0,
-      'Call Center': 0,
-      'Web Voice': 0,
       Zuri: 0,
       'One App': 0,
-      USSD: 0,
       LinkedIn: 0,
+      'Web Voice': 0,
       WhatsApp: 0,
+      'Call Center': 0,
+      USSD: 0,
       Email: 0,
       Instagram: 0,
     };
     for (const s of submissions) {
-      const tile = normalizeChannelForTile(s.channel, s.captureMethod);
+      const tile = normaliseChannel(s.channel, s.captureMethod);
       if (counts[tile] !== undefined) {
         counts[tile]++;
       } else {
@@ -773,6 +856,11 @@ export const AdminDispatchConsole: React.FC<AdminDispatchConsoleProps> = ({
     return counts;
   }, [submissions]);
 
+  // Channel percentages computed so they always sum to exactly 100%
+  const channelPercentages = useMemo(() => {
+    return computeChannelPercentages(channelCounts, CANONICAL_CHANNELS, metrics.total);
+  }, [channelCounts, metrics.total]);
+
   // Real computed status statistics for Channel Feeds page ("Synced 25 feeds from 9 channels")
   const syncedFeedStats = useMemo(() => {
     const syncedTickets = submissions.filter(
@@ -780,7 +868,7 @@ export const AdminDispatchConsole: React.FC<AdminDispatchConsoleProps> = ({
     );
     const activeChannels = new Set<string>();
     for (const t of syncedTickets) {
-      const tile = normalizeChannelForTile(t.channel, t.captureMethod);
+      const tile = normaliseChannel(t.channel, t.captureMethod);
       activeChannels.add(tile);
     }
     return {
@@ -1333,15 +1421,7 @@ export const AdminDispatchConsole: React.FC<AdminDispatchConsoleProps> = ({
 
   // Channel badge renderer with normalized labels, colors and icons
   const renderChannelBadge = (channel?: InflowChannel | string, captureMethod?: string) => {
-    if (captureMethod === 'image') {
-      return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 shrink-0">
-          <Camera className="w-2.5 h-2.5 text-amber-700 shrink-0" />
-          <span>Screenshot</span>
-        </span>
-      );
-    }
-    const tile = normalizeChannelForTile(channel, captureMethod);
+    const tile = normaliseChannel(channel, captureMethod);
     switch (tile) {
       case 'Twitter':
         return (
@@ -1416,8 +1496,8 @@ export const AdminDispatchConsole: React.FC<AdminDispatchConsoleProps> = ({
       default:
         return (
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-300 shrink-0">
-            <Phone className="w-2.5 h-2.5 text-slate-600 shrink-0" />
-            <span>{channel || 'Call Center'}</span>
+            <Radio className="w-2.5 h-2.5 text-slate-600 shrink-0" />
+            <span>{normaliseChannel(channel)}</span>
           </span>
         );
     }
@@ -1428,9 +1508,9 @@ export const AdminDispatchConsole: React.FC<AdminDispatchConsoleProps> = ({
     const list = submissions.filter((item) => {
       // Channel
       if (selectedChannel !== 'All Channels') {
-        const ch = getReportChannel(item);
-        const selNorm = normalizeChannelForTile(selectedChannel);
-        if (ch !== selNorm && item.channel !== selectedChannel) return false;
+        const itemChannel = normaliseChannel(item.channel, item.captureMethod);
+        const targetChannel = normaliseChannel(selectedChannel);
+        if (itemChannel !== targetChannel) return false;
       }
 
       // Operational Category
@@ -2491,19 +2571,20 @@ Automated alert dispatched by Safaricom SEMA Intelligent NOC Operations.
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                   {CHANNELS.filter((ch) => ch !== 'All Channels').map((ch) => {
-                    const count = channelCounts[ch] || 0;
-                    const pct = metrics.total > 0 ? Math.round((count / metrics.total) * 100) : 0;
+                    const normCh = normaliseChannel(ch);
+                    const count = channelCounts[normCh] || 0;
+                    const pct = channelPercentages[normCh] !== undefined ? channelPercentages[normCh] : 0;
                     return (
                       <div
-                        key={ch}
+                        key={normCh}
                         onClick={() => {
-                          setSelectedChannel(ch);
+                          setSelectedChannel(normCh);
                           navigateTo('incidents');
                         }}
                         className="p-3 rounded-lg border border-slate-200/80 hover:border-emerald-500 bg-slate-50/50 hover:bg-emerald-50/30 transition-all cursor-pointer space-y-1.5"
                       >
                         <div className="flex items-center justify-between gap-1">
-                          <div className="truncate">{renderChannelBadge(ch)}</div>
+                          <div className="truncate">{renderChannelBadge(normCh)}</div>
                           <span className="text-[10px] font-mono font-bold text-slate-500 shrink-0 tabular-nums">{pct}%</span>
                         </div>
                         <div className="flex items-baseline justify-between pt-0.5">
@@ -3083,15 +3164,16 @@ Automated alert dispatched by Safaricom SEMA Intelligent NOC Operations.
               {/* Channel Cards Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
                 {CHANNELS.filter((ch) => ch !== 'All Channels').map((ch) => {
-                  const count = channelCounts[ch] || 0;
-                  const pct = metrics.total > 0 ? Math.round((count / metrics.total) * 100) : 0;
+                  const normCh = normaliseChannel(ch);
+                  const count = channelCounts[normCh] || 0;
+                  const pct = channelPercentages[normCh] !== undefined ? channelPercentages[normCh] : 0;
                   return (
                     <div
-                      key={ch}
+                      key={normCh}
                       className="bg-white border border-slate-200 rounded-xl p-4.5 shadow-2xs space-y-3 hover:border-emerald-500 transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <div className="shrink-0">{renderChannelBadge(ch)}</div>
+                        <div className="shrink-0">{renderChannelBadge(normCh)}</div>
                         <span className="text-xs font-mono font-bold text-slate-500 shrink-0 tabular-nums">{pct}% of queue</span>
                       </div>
 
@@ -3118,7 +3200,7 @@ Automated alert dispatched by Safaricom SEMA Intelligent NOC Operations.
                         <button
                           type="button"
                           onClick={() => {
-                            setSelectedChannel(ch);
+                            setSelectedChannel(normCh);
                             navigateTo('incidents');
                           }}
                           className="text-xs font-bold text-emerald-800 hover:text-emerald-950 underline cursor-pointer"
@@ -3215,12 +3297,15 @@ Automated alert dispatched by Safaricom SEMA Intelligent NOC Operations.
                             Impacted Channels:
                           </span>
                           <div className="bg-white/90 border border-amber-200 rounded-lg p-2.5 space-y-1 font-mono text-[11px]">
-                            {Object.entries(primaryCluster.channelBreakdown).map(([ch, count]) => (
-                              <div key={ch} className="flex justify-between">
-                                <span className="text-slate-600">{ch}:</span>
-                                <strong className="text-slate-900">{count} {count === 1 ? 'ticket' : 'tickets'}</strong>
-                              </div>
-                            ))}
+                            {Object.entries(primaryCluster.channelBreakdown).map(([ch, count]) => {
+                              const normCh = normaliseChannel(ch);
+                              return (
+                                <div key={normCh} className="flex justify-between">
+                                  <span className="text-slate-600">{normCh}:</span>
+                                  <strong className="text-slate-900">{count} {count === 1 ? 'ticket' : 'tickets'}</strong>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       </div>
@@ -3611,9 +3696,14 @@ Automated alert dispatched by Safaricom SEMA Intelligent NOC Operations.
                         <span className="p-1 bg-amber-100/80 text-amber-800 rounded-md">
                           <Sparkles className="w-3.5 h-3.5 text-amber-700" />
                         </span>
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                          Incident Data Analysis &amp; Operational Brief
-                        </h4>
+                        <div>
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                            Incident Data Analysis &amp; Operational Brief
+                          </h4>
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            AI-generated suggestions from current tickets; reviewed by humans
+                          </span>
+                        </div>
                       </div>
 
                       <button
@@ -3653,10 +3743,17 @@ Automated alert dispatched by Safaricom SEMA Intelligent NOC Operations.
                           Operational Brief
                         </span>
                       </div>
-                      <p className="text-xs text-slate-800 leading-relaxed font-normal">
-                        {aiAnalyticsData?.executiveSummary ||
-                          'Compiling incident data from customer submissions across Kenya...'}
-                      </p>
+                      {isCompilingAI ? (
+                        <div className="flex items-center gap-2.5 py-2.5 text-xs text-emerald-900 font-medium animate-pulse">
+                          <Loader2 className="w-4 h-4 animate-spin text-emerald-700 shrink-0" />
+                          <span>Synthesizing incident intelligence from current store tickets...</span>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-800 leading-relaxed font-normal">
+                          {aiAnalyticsData?.executiveSummary ||
+                            'Analyzing incident data from customer submissions across Kenya...'}
+                        </p>
+                      )}
                     </div>
 
                     {/* Fast Metric Quick-Cards */}
@@ -3688,33 +3785,82 @@ Automated alert dispatched by Safaricom SEMA Intelligent NOC Operations.
                         <span className="text-2xs font-medium text-cyan-800 uppercase tracking-wider block">
                           SLA Compliance
                         </span>
-                        <p className="text-sm font-bold text-cyan-950 mt-0.5">94.2% on Track</p>
-                        <span className="text-2xs text-cyan-800 font-medium">Avg turnaround: 2.4h</span>
+                        <p className="text-sm font-bold text-cyan-950 mt-0.5 truncate" title={slaMetrics.label}>
+                          {slaMetrics.label}
+                        </p>
+                        <span className="text-2xs text-cyan-800 font-medium truncate block">
+                          {slaMetrics.subtext}
+                        </span>
                       </div>
                     </div>
 
                     {/* Action Directives */}
                     <div className="space-y-2 pt-1">
-                      <h5 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                        <ShieldAlert className="w-3.5 h-3.5 text-emerald-700" />
-                        <span>Recommended Operational Directives</span>
-                      </h5>
-                      <div className="space-y-1.5">
-                        {(aiAnalyticsData?.recommendations || [
-                          'Pre-deploy metro fiber splicing teams along heavily reported arterial corridors.',
-                          'Audit M-PESA B2B callback reconciliation to achieve 30-minute SLA.',
-                          'Maintain multilingual notifications in Kiswahili and Sheng to keep customers updated.',
-                        ]).map((rec, i) => (
-                          <div
-                            key={i}
-                            className="flex items-start gap-2 p-2 bg-slate-50 border border-slate-200/70 rounded-lg text-xs text-slate-700"
-                          >
-                            <span className="flex items-center justify-center w-4 h-4 rounded-full bg-emerald-700 text-white font-bold text-2xs shrink-0 mt-0.5">
-                              {i + 1}
-                            </span>
-                            <span className="leading-snug">{rec}</span>
-                          </div>
-                        ))}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                        <h5 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <ShieldAlert className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>Recommended Operational Directives</span>
+                        </h5>
+                        <span className="text-[10px] text-slate-500 font-medium">
+                          AI-generated suggestions from current tickets; reviewed by humans
+                        </span>
+                      </div>
+
+                      {isCompilingAI ? (
+                        <div className="space-y-1.5 pt-1">
+                          {[1, 2, 3].map((n) => (
+                            <div
+                              key={n}
+                              className="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200/70 rounded-lg text-xs text-slate-400 animate-pulse"
+                            >
+                              <div className="w-4 h-4 rounded-full bg-slate-200 shrink-0" />
+                              <div className="h-3 bg-slate-200 rounded w-3/4" />
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {(aiAnalyticsData?.recommendations || []).map((rec, i) => (
+                            <div
+                              key={i}
+                              className="flex items-start gap-2 p-2 bg-slate-50 border border-slate-200/70 rounded-lg text-xs text-slate-700"
+                            >
+                              <span className="flex items-center justify-center w-4 h-4 rounded-full bg-emerald-700 text-white font-bold text-2xs shrink-0 mt-0.5">
+                                {i + 1}
+                              </span>
+                              <span className="leading-snug">{rec}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Channel Inflow Telemetry & Channel Mix */}
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <h5 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Radio className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>Channel Inflow Telemetry &amp; Mix</span>
+                        </h5>
+                        <span className="text-[11px] font-mono text-slate-500">
+                          {syncedFeedStats.statusLine}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 font-mono text-xs">
+                        {CANONICAL_CHANNELS.map((ch) => {
+                          const normCh = normaliseChannel(ch);
+                          const count = channelCounts[normCh] || 0;
+                          const pct = channelPercentages[normCh] || 0;
+                          return (
+                            <div key={normCh} className="p-2 bg-slate-50 border border-slate-200/80 rounded-lg flex flex-col justify-between">
+                              <span className="text-[11px] font-sans font-semibold text-slate-700 truncate">{normCh}</span>
+                              <div className="flex items-baseline justify-between mt-1">
+                                <span className="font-bold text-slate-900">{count}</span>
+                                <span className="text-[10px] text-slate-500">{pct}%</span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>

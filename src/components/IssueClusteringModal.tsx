@@ -1,6 +1,7 @@
 import { Zap, X, MapPin, Radio, AlertTriangle, CheckCircle2, ArrowRight, ShieldAlert, Layers, Sparkles } from 'lucide-react';
 
 import { IncidentCluster, computeClustersFromStore } from '../utils/clusterComputation';
+import { normaliseChannel } from '../utils/syncFeeds';
 
 interface IssueClusteringModalProps {
   isOpen: boolean;
@@ -223,12 +224,15 @@ export const IssueClusteringModal: React.FC<IssueClusteringModalProps> = ({
                         Impacted Channels:
                       </span>
                       <div className="bg-white/90 border border-amber-200 rounded-lg p-2.5 space-y-1 font-mono text-[11px]">
-                        {Object.entries(primaryCluster.channelBreakdown).map(([ch, count]) => (
-                          <div key={ch} className="flex justify-between">
-                            <span className="text-slate-600">{ch}:</span>
-                            <strong className="text-slate-900">{count} {count === 1 ? 'call/report' : 'calls/reports'}</strong>
-                          </div>
-                        ))}
+                        {Object.entries(primaryCluster.channelBreakdown).map(([ch, count]) => {
+                          const normCh = normaliseChannel(ch);
+                          return (
+                            <div key={normCh} className="flex justify-between">
+                              <span className="text-slate-600">{normCh}:</span>
+                              <strong className="text-slate-900">{count} {count === 1 ? 'call/report' : 'calls/reports'}</strong>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
