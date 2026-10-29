@@ -724,39 +724,42 @@ export const VoiceTextCaptureHero: React.FC<VoiceTextCaptureHeroProps> = ({
   };
 
   const compressImageFile = async (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
+        const raw = (e.target?.result as string) || '';
         const img = new Image();
         img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let { width, height } = img;
-          const maxDim = 1600;
-          if (width > maxDim || height > maxDim) {
-            if (width > height) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            } else {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
+          try {
+            const canvas = document.createElement('canvas');
+            let { width, height } = img;
+            const maxDim = 1200;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
             }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              resolve(raw);
+              return;
+            }
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.85));
+          } catch {
+            resolve(raw);
           }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            resolve(e.target?.result as string);
-            return;
-          }
-          ctx.drawImage(img, 0, 0, width, height);
-          // Compress to ~1 MB using high-quality JPEG compression
-          const compressed = canvas.toDataURL('image/jpeg', 0.82);
-          resolve(compressed);
         };
-        img.onerror = reject;
-        img.src = e.target?.result as string;
+        img.onerror = () => resolve(raw);
+        img.src = raw;
       };
-      reader.onerror = reject;
+      reader.onerror = () => resolve('');
       reader.readAsDataURL(file);
     });
   };
@@ -781,53 +784,22 @@ export const VoiceTextCaptureHero: React.FC<VoiceTextCaptureHeroProps> = ({
     try {
       setIsAnalyzingImages(true);
 
-      // Compress images in the browser
+      // Attach image preview thumbnails
       const compressedList = await Promise.all(selectedFiles.map(compressImageFile));
-      const updatedImages = [...attachedImages, ...compressedList].slice(0, 3);
+      const validImages = compressedList.filter(Boolean);
+      const updatedImages = [...attachedImages, ...validImages].slice(0, 3);
       setAttachedImages(updatedImages);
       setCaptureMethod('image');
 
-      // Send up to 3 images to Gemini in ONE request
-      const response = await fetch('/api/analyze-images', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ images: updatedImages }),
-      });
-
-      const contentType = response.headers.get('content-type');
-      if (response.ok && contentType && contentType.includes('application/json')) {
-        const data = await response.json();
-        if (data.isReadable && data.draft) {
-          // Fill problem description with draft for customer to edit and confirm
-          setText(data.draft);
-          currentTextRef.current = data.draft;
-          if (data.language) {
-            setDetectedLanguage(data.language as DetectedLanguageLabel);
-          }
-          if (data.translation) {
-            setEnglishTranslation(data.translation);
-          }
-          if (data.likelyIssue) {
-            setImageAnalysis(data.likelyIssue);
-          }
-          setImageNotice(null);
-        } else {
-          // Ask customer to describe the problem if unreadable or unrelated
-          setImageNotice(
-            'We could not clearly detect a telecom or service issue from this image. Please describe the problem in the text box below.'
-          );
-        }
-      } else {
-        setImageNotice(
-          'Image attached successfully. Please describe your problem in the text box below.'
-        );
-      }
+      // DEMO PLACEHOLDER: replace with real image reading
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const demoDraft = 'Safaricom PLC internet today is extremely slow. Both 5G on handhelds and home fiber.';
+      setText(demoDraft);
+      currentTextRef.current = demoDraft;
+      setDetectedLanguage('English');
+      setImageNotice(null);
     } catch (err) {
-      console.warn('Image analysis notice:', err);
-      // Never block submit if AI fails
-      setImageNotice(
-        'Image attached. Please enter or confirm your problem description in the box below.'
-      );
+      console.warn('Image upload notice:', err);
     } finally {
       setIsAnalyzingImages(false);
       e.target.value = '';
